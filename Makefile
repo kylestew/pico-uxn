@@ -2,7 +2,9 @@ BOARD ?= pico2_w
 BUILD_DIR = build
 OPENOCD ?= $(HOME)/.local/bin/openocd
 
-.PHONY: all clean flash debug
+SERIAL_PORT ?= $(shell ls /dev/tty.usbmodem* 2>/dev/null | head -1)
+
+.PHONY: all clean flash debug info serial
 
 all:
 	@mkdir -p $(BUILD_DIR)
@@ -20,3 +22,13 @@ flash:
 debug:
 	$(OPENOCD) -f interface/cmsis-dap.cfg -f target/rp2350.cfg \
 		-c "adapter speed 5000"
+
+info:
+	@echo "=== Size ==="
+	@arm-none-eabi-size $(BUILD_DIR)/pico_uxn.elf
+	@echo ""
+	@echo "=== Top 20 symbols ==="
+	@arm-none-eabi-nm --size-sort -S -r $(BUILD_DIR)/pico_uxn.elf | head -20
+
+serial:
+	minicom -D $(SERIAL_PORT) -b 115200

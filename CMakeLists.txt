@@ -16,7 +16,7 @@ pico_enable_stdio_usb(pico_uxn 1)
 pico_enable_stdio_uart(pico_uxn 1)
 pico_add_extra_outputs(pico_uxn)
 
-target_link_libraries(pico_uxn pico_stdlib pico_cyw43_arch_none)
+target_link_libraries(pico_uxn pico_stdlib)
 
 add_custom_command(TARGET pico_uxn POST_BUILD
     COMMAND arm-none-eabi-size $<TARGET_FILE:pico_uxn>

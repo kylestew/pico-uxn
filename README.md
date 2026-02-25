@@ -50,6 +50,8 @@ make
 | `make` | Configure and build for Pico 2 W |
 | `make flash` | Flash via Debug Probe (SWD) |
 | `make debug` | Start OpenOCD server for interactive debugging |
+| `make serial` | Open UART console via Debug Probe |
+| `make info` | Show binary size and largest symbols |
 | `make clean` | Remove build directory |
 
 > Override the board with `make BOARD=pico2` or any other supported board name.
