@@ -11,6 +11,7 @@ pico_sdk_init()
 
 add_executable(pico_uxn
     main.c
+    sharp_display.c
 )
 
 pico_enable_stdio_usb(pico_uxn 1)

@@ -1,61 +1,48 @@
-#include "hardware/spi.h"
 #include "pico/binary_info.h"
 #include "pico/stdlib.h"
+#include "sharp_display.h"
 
 #include <stdio.h>
 
-// void write_register() {
-//     spi_write_blockgin
-//     cs_deselect();
-//     sleep_ms(1);
-// }
+static SharpDisplay display;
 
-void cs_select() {
-    sleep_ms(1);
-    gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
-    sleep_ms(1);
+static void fill_checkerboard(SharpDisplay *d, int square_size) {
+    for (int y = 0; y < SHARP_HEIGHT; y++) {
+        int checker_y = y / square_size;
+        for (int x_byte = 0; x_byte < SHARP_WIDTH_BYTES; x_byte++) {
+            int checker_x                                  = (x_byte * 8) / square_size;
+            d->framebuffer[y * SHARP_WIDTH_BYTES + x_byte] = ((checker_x + checker_y) % 2) ? 0xFF : 0x00;
+        }
+    }
 }
-void cs_deselect() {
-    sleep_ms(1);
-    gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0);
-    sleep_ms(1);
-}
-
-void clear_screen() {}
 
 int main() {
     bi_decl(bi_program_description("Uxn on the Raspberry Pi Pico"));
 
     stdio_init_all();
 
-    // Set SPI0 at 1MHz, TODO: Change to 2MHz once working
-    spi_init(spi_default, 1 * 1000 * 1000);
-    gpio_set_function(PICO_DEFAULT_SPI_SCK_PIN, GPIO_FUNC_SPI);
-    gpio_set_function(PICO_DEFAULT_SPI_TX_PIN, GPIO_FUNC_SPI);
+    // Set SPI0 at 2MHz
+    sharp_display_init(&display, spi_default, PICO_DEFAULT_SPI_CSN_PIN, PICO_DEFAULT_SPI_SCK_PIN,
+                       PICO_DEFAULT_SPI_TX_PIN, 2000000);
 
-    // Chip select is active-high, init and drive-low
-    gpio_init(PICO_DEFAULT_SPI_CSN_PIN);
-    gpio_set_dir(PICO_DEFAULT_SPI_CSN_PIN, GPIO_OUT);
-    gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0);
-
-    // TEMP: delay before clear
-    sleep_ms(1000);
-    sleep_ms(1000);
-    sleep_ms(1000);
     sleep_ms(1000);
 
-    // Clear the screen
-    // 00100000
-    uint8_t data[2];
-    data[0] = 0b00100000;
-    data[1] = 0b00000000;
+    sharp_display_clear(&display);
 
-    cs_select();
-    spi_write_blocking(spi_default, data, 2);
-    cs_deselect();
+    // fill_checkerboard(&display, 24);
+    // sharp_display_refresh(&display);
 
+    bool toggle = false;
     while (1) {
         puts("Hello from pico-uxn");
         sleep_ms(1000);
+
+        if (toggle) {
+            fill_checkerboard(&display, 24);
+            sharp_display_refresh(&display);
+        } else {
+            sharp_display_clear(&display);
+        }
+        toggle = !toggle;
     }
 }
