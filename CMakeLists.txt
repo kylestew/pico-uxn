@@ -9,10 +9,22 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 pico_sdk_init()
 
-add_executable(pico_uxn
-    main.c
-    sharp_display.c
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/rom.h
+    COMMAND xxd -i test.rom ${CMAKE_CURRENT_BINARY_DIR}/rom.h
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test.rom
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Generating rom.h from test.rom"
 )
+
+add_executable(pico_uxn
+    src/main.c
+    src/uxn.c
+    src/sharp_display.c
+)
+
+target_sources(pico_uxn PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/rom.h)
+target_include_directories(pico_uxn PRIVATE ${CMAKE_CURRENT_BINARY_DIR} src)
 
 pico_enable_stdio_usb(pico_uxn 1)
 pico_enable_stdio_uart(pico_uxn 1)

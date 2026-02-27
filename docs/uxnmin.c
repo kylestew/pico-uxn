@@ -1,0 +1,200 @@
+#include <stdio.h>
+
+typedef signed char Sint8;
+typedef unsigned char Uint8;
+typedef unsigned short Uint16;
+
+static unsigned int console_vector;
+static Uint8 ram[0x10000], dev[0x100], ptr[2], stk[2][0x100];
+
+static Uint8 emu_dei(const Uint8 port) { return dev[port]; }
+
+static void emu_deo(const Uint8 port, const Uint8 value) {
+    dev[port] = value;
+    switch (port) {
+    case 0x11:
+        console_vector = dev[0x10] << 8 | value;
+        return;
+    case 0x18:
+        fputc(value, stdout);
+        return;
+    case 0x19:
+        fputc(value, stderr);
+        return;
+    }
+}
+
+#define OPC(opc, A, B)                                                                                                 \
+    {                                                                                                                  \
+    case 0x00 | opc: {                                                                                                 \
+        const Uint8 d = 0, r = 0;                                                                                      \
+        A B                                                                                                            \
+    } break;                                                                                                           \
+    case 0x20 | opc: {                                                                                                 \
+        const Uint8 d = 1, r = 0;                                                                                      \
+        A B                                                                                                            \
+    } break;                                                                                                           \
+    case 0x40 | opc: {                                                                                                 \
+        const Uint8 d = 0, r = 1;                                                                                      \
+        A B                                                                                                            \
+    } break;                                                                                                           \
+    case 0x60 | opc: {                                                                                                 \
+        const Uint8 d = 1, r = 1;                                                                                      \
+        A B                                                                                                            \
+    } break;                                                                                                           \
+    case 0x80 | opc: {                                                                                                 \
+        const Uint8 d = 0, r = 0, k = ptr[0];                                                                          \
+        A ptr[0] = k;                                                                                                  \
+        B                                                                                                              \
+    } break;                                                                                                           \
+    case 0xa0 | opc: {                                                                                                 \
+        const Uint8 d = 1, r = 0, k = ptr[0];                                                                          \
+        A ptr[0] = k;                                                                                                  \
+        B                                                                                                              \
+    } break;                                                                                                           \
+    case 0xc0 | opc: {                                                                                                 \
+        const Uint8 d = 0, r = 1, k = ptr[1];                                                                          \
+        A ptr[1] = k;                                                                                                  \
+        B                                                                                                              \
+    } break;                                                                                                           \
+    case 0xe0 | opc: {                                                                                                 \
+        const Uint8 d = 1, r = 1, k = ptr[1];                                                                          \
+        A ptr[1] = k;                                                                                                  \
+        B                                                                                                              \
+    } break;                                                                                                           \
+    }
+#define DEC(m) stk[m][--ptr[m]]
+#define INC(m) stk[m][ptr[m]++]
+#define IMM a = ram[pc++] << 8, a |= ram[pc++];
+#define MOV pc = d ? (Uint16) a : pc + (Sint8) a;
+#define POx(o, m)                                                                                                      \
+    o = DEC(r);                                                                                                        \
+    if (m)                                                                                                             \
+        o |= DEC(r) << 8;
+#define PUx(i, m, s)                                                                                                   \
+    if (m)                                                                                                             \
+        c = (i), INC(s) = c >> 8, INC(s) = c;                                                                          \
+    else                                                                                                               \
+        INC(s) = i;
+#define GOT(o)                                                                                                         \
+    if (d)                                                                                                             \
+        o[1] = DEC(r);                                                                                                 \
+    o[0] = DEC(r);
+#define PUT(i, s)                                                                                                      \
+    INC(s) = i[0];                                                                                                     \
+    if (d)                                                                                                             \
+        INC(s) = i[1];
+#define DEO(o, v)                                                                                                      \
+    emu_deo(o, v[0]);                                                                                                  \
+    if (d)                                                                                                             \
+        emu_deo(o + 1, v[1]);
+#define DEI(i, v)                                                                                                      \
+    v[0] = emu_dei(i);                                                                                                 \
+    if (d)                                                                                                             \
+        v[1] = emu_dei(i + 1);                                                                                         \
+    PUT(v, r)
+#define POK(o, v, m)                                                                                                   \
+    ram[o] = v[0];                                                                                                     \
+    if (d)                                                                                                             \
+        ram[(o + 1) & m] = v[1];
+#define PEK(i, v, m)                                                                                                   \
+    v[0] = ram[i];                                                                                                     \
+    if (d)                                                                                                             \
+        v[1] = ram[(i + 1) & m];                                                                                       \
+    PUT(v, r)
+
+static unsigned int uxn_eval(Uint16 pc) {
+    Uint16 a, b, c, x[2], y[2], z[2];
+    for (;;)
+        switch (ram[pc++]) {
+        /* BRK */ case 0x00:
+            return 1;
+        /* JCI */ case 0x20:
+            if (DEC(0)) {
+                IMM pc += a;
+            } else
+                pc += 2;
+            break;
+        /* JMI */ case 0x40:
+            IMM pc += a;
+            break;
+        /* JSI */ case 0x60:
+            IMM PUx(pc, 1, 1) pc += a;
+            break;
+        /* LI2 */ case 0xa0:
+            INC(0) = ram[pc++]; /* fall-through */
+        /* LIT */ case 0x80:
+            INC(0) = ram[pc++];
+            break;
+        /* L2r */ case 0xe0:
+            INC(1) = ram[pc++]; /* fall-through */
+        /* LIr */ case 0xc0:
+            INC(1) = ram[pc++];
+            break;
+            /* INC */ OPC(0x01, POx(a, d), PUx(a + 1, d, r))
+            /* POP */ OPC(0x02, ptr[r] -= 1 + d;, {})
+            /* NIP */ OPC(0x03, GOT(x) ptr[r] -= 1 + d;, PUT(x, r))
+            /* SWP */ OPC(0x04, GOT(x) GOT(y), PUT(x, r) PUT(y, r))
+            /* ROT */ OPC(0x05, GOT(x) GOT(y) GOT(z), PUT(y, r) PUT(x, r) PUT(z, r))
+            /* DUP */ OPC(0x06, GOT(x), PUT(x, r) PUT(x, r))
+            /* OVR */ OPC(0x07, GOT(x) GOT(y), PUT(y, r) PUT(x, r) PUT(y, r))
+            /* EQU */ OPC(0x08, POx(a, d) POx(b, d), PUx(b == a, 0, r))
+            /* NEQ */ OPC(0x09, POx(a, d) POx(b, d), PUx(b != a, 0, r))
+            /* GTH */ OPC(0x0a, POx(a, d) POx(b, d), PUx(b > a, 0, r))
+            /* LTH */ OPC(0x0b, POx(a, d) POx(b, d), PUx(b < a, 0, r))
+            /* JMP */ OPC(0x0c, POx(a, d), MOV)
+            /* JCN */ OPC(0x0d, POx(a, d) POx(b, 0), if (b) MOV)
+            /* JSR */ OPC(0x0e, POx(a, d), PUx(pc, 1, !r) MOV)
+            /* STH */ OPC(0x0f, GOT(x), PUT(x, !r))
+            /* LDZ */ OPC(0x10, POx(a, 0), PEK(a, x, 0xff))
+            /* STZ */ OPC(0x11, POx(a, 0) GOT(y), POK(a, y, 0xff))
+            /* LDR */ OPC(0x12, POx(a, 0), PEK(pc + (Sint8) a, x, 0xffff))
+            /* STR */ OPC(0x13, POx(a, 0) GOT(y), POK(pc + (Sint8) a, y, 0xffff))
+            /* LDA */ OPC(0x14, POx(a, 1), PEK(a, x, 0xffff))
+            /* STA */ OPC(0x15, POx(a, 1) GOT(y), POK(a, y, 0xffff))
+            /* DEI */ OPC(0x16, POx(a, 0), DEI(a, x))
+            /* DEO */ OPC(0x17, POx(a, 0) GOT(y), DEO(a, y))
+            /* ADD */ OPC(0x18, POx(a, d) POx(b, d), PUx(b + a, d, r))
+            /* SUB */ OPC(0x19, POx(a, d) POx(b, d), PUx(b - a, d, r))
+            /* MUL */ OPC(0x1a, POx(a, d) POx(b, d), PUx(b * a, d, r))
+            /* DIV */ OPC(0x1b, POx(a, d) POx(b, d), PUx(a ? b / a : 0, d, r))
+            /* AND */ OPC(0x1c, POx(a, d) POx(b, d), PUx(b & a, d, r))
+            /* ORA */ OPC(0x1d, POx(a, d) POx(b, d), PUx(b | a, d, r))
+            /* EOR */ OPC(0x1e, POx(a, d) POx(b, d), PUx(b ^ a, d, r))
+            /* SFT */ OPC(0x1f, POx(a, 0) POx(b, d), PUx(b >> (a & 0xf) << (a >> 4), d, r))
+        }
+    return 0;
+}
+
+static void console_input(int c, unsigned int type) {
+    dev[0x12] = c, dev[0x17] = type;
+    if (console_vector)
+        uxn_eval(console_vector);
+}
+
+int main(int argc, char **argv) {
+    FILE *f;
+    if (argc < 2)
+        return fprintf(stdout, "usage: %s file.rom [args..]\n", argv[0]);
+    else if (!(f = fopen(argv[1], "rb")))
+        return fprintf(stderr, "%s: %s not found.\n", argv[0], argv[1]);
+    fread(&ram[0x100], 0xff00, 1, f), fclose(f);
+    dev[0x17] = argc > 2;
+    if (uxn_eval(0x100) && console_vector) {
+        int i = 2;
+        for (; i < argc; i++) {
+            char c, *p = argv[i];
+            while (!dev[0x0f] && (c = *p++))
+                console_input(c, 2);
+            console_input('\n', 3 + (i == argc - 1));
+        }
+        while (!dev[0x0f]) {
+            char c = fgetc(stdin);
+            if (feof(stdin))
+                break;
+            console_input(c, 1);
+        }
+        console_input('\n', 4);
+    }
+    return dev[0x0f] & 0x7f;
+}
