@@ -14,7 +14,7 @@ static SharpDisplay display;
 
 static unsigned int
 system_load() {
-    memcpy(ram + 0x100, test_rom, test_rom_len);
+    memcpy(ram + 0x100, prog_rom, prog_rom_len);
     return 1;
 }
 

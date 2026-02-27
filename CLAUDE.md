@@ -8,26 +8,33 @@ This is a Uxn virtual machine implementation running on a Raspberry Pi Pico 2 W 
 
 ## Build Commands
 
-Requires: `arm-none-eabi-gcc` toolchain, `cmake`, `xxd`.
+Requires: `arm-none-eabi-gcc` toolchain, `cmake`, `xxd`, SDL2 (for host assembler tool).
 
 ```sh
-# Configure (first time, or after adding source files)
-cmake -B build -DPICO_BOARD=pico2_w
+# Build with default test (opctest)
+make
 
-# Build
-make -C build -j4
+# Build with a specific test
+make TEST_TAL=screen
 
-# Flash: hold BOOTSEL on Pico, then copy UF2 to the mounted drive
-cp build/pico_uxn.uf2 /Volumes/RPI-RP2/
+# Flash via Debug Probe
+make flash
 ```
 
-The build will print memory usage via `arm-none-eabi-size` after each successful compile.
+The build assembles `etc/tests/${TEST_TAL}.tal` into a ROM at build time using a self-hosted toolchain (see ROM Assembly below), then bakes it into the firmware. Memory usage is printed after each successful compile.
 
 ## Architecture
 
-### ROM Loading
+### ROM Assembly (Self-Hosted)
 
-`test.rom` (a Uxn binary) is converted at build time to `build/rom.h` by `xxd -i`. The ROM contents are copied into `ram[0x100]` at boot via `system_load()` in `main.c`. Uxn programs always start executing at address `0x100`.
+The ROM is assembled from `.tal` source at build time via a self-hosted pipeline:
+
+1. `etc/utils/uxn2.c` is compiled as a host-native binary (using `cc`, not the ARM cross-compiler)
+2. `etc/utils/drifblim.rom.txt` is converted from hex to binary via `xxd -r -p`
+3. The selected `.tal` file is assembled: `uxn2 drifblim.rom input.tal output.rom`
+4. The output ROM is converted to `build/rom.h` by `xxd -i`
+
+The ROM contents are copied into `ram[0x100]` at boot via `system_load()` in `main.c`. Uxn programs always start executing at address `0x100`. Select the test with `-DTEST_TAL=name` (CMake) or `make TEST_TAL=name`.
 
 ### Uxn VM (`uxn.c` / `uxn.h`)
 
@@ -55,9 +62,7 @@ Currently these just pass through to `dev[]`. Adding peripheral support means ad
 
 `docs/uxnmin.c` is a standalone desktop Uxn emulator (single-file, stdio-based) useful for testing ROM logic without hardware. It includes console device support (ports `0x18`/`0x19` for stdout/stderr).
 
-`docs/uxn2.c` is a full implementation using SDL2. Our implementation won't be using SDL,
-but instead our custom Sharp display driver. We also don't have a file system. Much of the
-rest of the code is helpful as reference.
+`etc/utils/uxn2.c` is the full Uxn emulator with SDL2 and file device support. It is compiled as a host tool at build time to run the drifblim assembler. It is not linked into the Pico firmware.
 
 ## Key Files
 
@@ -66,8 +71,10 @@ rest of the code is helpful as reference.
 | `main.c`                              | Entry point, system boot, `emu_dei`/`emu_deo` device hooks |
 | `uxn.c` / `uxn.h`                     | Uxn bytecode interpreter and VM state                      |
 | `sharp_display.c` / `sharp_display.h` | Sharp Memory LCD SPI driver                                |
-| `test.rom`                            | Uxn ROM binary (compiled to `build/rom.h` at build time)   |
-| `docs/uxnmin.c`                       | Reference desktop Uxn emulator for testing                 |
+| `etc/tests/*.tal`                     | Uxn test programs in Tal assembly                          |
+| `etc/utils/uxn2.c`                    | Full Uxn emulator (host build tool for assembler)          |
+| `etc/utils/drifblim.rom.txt`          | Drifblim assembler ROM (hex dump)                          |
+| `docs/uxnmin.c`                       | Minimal reference Uxn emulator (console I/O only)          |
 | `pico-sdk/`                           | Raspberry Pi Pico SDK (git submodule)                      |
 
 ## Uxn Device Map Convention

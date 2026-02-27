@@ -1,4 +1,5 @@
 BOARD ?= pico2_w
+TEST_TAL ?= hello
 BUILD_DIR = build
 OPENOCD ?= $(HOME)/.local/bin/openocd
 
@@ -8,7 +9,7 @@ SERIAL_PORT ?= $(shell ls /dev/tty.usbmodem* 2>/dev/null | head -1)
 
 all:
 	@mkdir -p $(BUILD_DIR)
-	@cd $(BUILD_DIR) && cmake -DPICO_BOARD=$(BOARD) ..
+	@cd $(BUILD_DIR) && cmake -DPICO_BOARD=$(BOARD) -DTEST_TAL=$(TEST_TAL) ..
 	@$(MAKE) -C $(BUILD_DIR) -j4
 
 clean:

@@ -13,7 +13,7 @@ xcode-select --install
 Install the ARM cross-compiler, CMake, and build dependencies:
 
 ```bash
-brew install cmake arm-none-eabi-gcc minicom automake autoconf texinfo libtool libusb pkg-config
+brew install cmake arm-none-eabi-gcc sdl2 minicom automake autoconf texinfo libtool libusb pkg-config
 ```
 
 Build and install the [Raspberry Pi fork of OpenOCD](https://github.com/raspberrypi/openocd) (the stock Homebrew version lacks RP2350 support):
@@ -55,6 +55,32 @@ make
 | `make clean` | Remove build directory |
 
 > Override the board with `make BOARD=pico2` or any other supported board name.
+
+## ROM Assembly (Self-Hosting)
+
+Uxn programs are written in [Tal](https://wiki.xxiivv.com/site/uxntal.html) assembly. The build system assembles `.tal` source files into ROM binaries at build time using a self-hosted toolchain — the assembler ([drifblim](https://wiki.xxiivv.com/site/drifblim.html)) is itself a Uxn ROM, run on a host-compiled Uxn emulator.
+
+The pipeline:
+
+1. `etc/utils/uxn2.c` is compiled as a **host-native** binary (not cross-compiled for ARM)
+2. `etc/utils/drifblim.rom.txt` (hex dump of the assembler ROM) is converted to binary via `xxd -r -p`
+3. The selected `.tal` file is assembled: `uxn2 drifblim.rom input.tal output.rom`
+4. The resulting ROM is converted to a C header via `xxd -i` and baked into the firmware
+
+Select a test program with `TEST_TAL`:
+
+```bash
+# Build with a specific test (default: opctest)
+make TEST_TAL=screen
+
+# Switch to a different test
+make clean
+make TEST_TAL=console
+```
+
+Available tests in `etc/tests/`: `audio`, `console`, `datetime`, `file`, `opctest`, `perifs`, `screen`, `screen.auto`, `screen.bounds`, `screen.pixel`, `system`.
+
+> Requires SDL2 on the host for the uxn2 build tool: `brew install sdl2`
 
 ## Debug Probe Wiring
 
