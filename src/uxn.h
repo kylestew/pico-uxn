@@ -5,6 +5,7 @@
 
 typedef signed char Sint8;
 typedef unsigned char Uint8;
+typedef unsigned short Uint16;
 
 extern uint8_t ram[0x10000], dev[0x100], ptr[2], stk[2][0x100];
 
